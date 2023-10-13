@@ -1,13 +1,27 @@
 package main
 
 import (
+	"log"
+
 	"github.com/ottstack/kindmesh/internal/configapi/watchclient"
 	"github.com/ottstack/kindmesh/internal/mechaproxy/callback"
 	"github.com/ottstack/kindmesh/internal/mechaproxy/egress"
 	"github.com/ottstack/kindmesh/internal/mechaproxy/ingress"
+	"github.com/ottstack/kindmesh/internal/pkg/netdevice"
+	"github.com/ottstack/kindmesh/internal/spec"
 )
 
 func main() {
+	if err := netdevice.EnsureDevice("bridge0"); err != nil {
+		log.Fatal(err)
+	}
+	if err := netdevice.AddAddr(spec.EGRESS_IP); err != nil {
+		log.Fatal(err)
+	}
+	if err := netdevice.AddAddr(spec.INGRESS_IP); err != nil {
+		log.Fatal(err)
+	}
+
 	watchclient.InitWatcher()
 
 	// ingress: forword request to local container or send to queue (then wait for callback)

@@ -1,8 +1,9 @@
 package spec
 
 const (
-	DNS_BIND_IP      = "169.254.99.1"
-	ENVOY_CONTROL_IP = "169.254.99.2"
+	DNS_BIND_IP = "169.254.99.1"
+	EGRESS_IP   = "169.254.99.2"
+	INGRESS_IP  = "169.254.99.3"
 )
 
 type L7Service struct {

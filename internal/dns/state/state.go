@@ -2,63 +2,51 @@ package state
 
 import (
 	"net"
-	"strings"
 	"sync/atomic"
+
+	"github.com/ottstack/kindmesh/internal/configapi/watchclient"
+	"github.com/ottstack/kindmesh/internal/meta"
+	"github.com/ottstack/kindmesh/internal/pkg/innerip"
+	"github.com/ottstack/kindmesh/internal/spec"
 )
 
-var state = atomic.Value{}
-
-type hijackState struct {
-	pod2NS        map[string]string
-	ns2GwIP       map[string]net.IP
-	allDomains    map[string]bool
-	clusterDomain string
-}
+var allDomains = atomic.Value{}
+var sourceIP2Search = atomic.Value{}
+var egressIP = net.ParseIP(spec.EGRESS_IP)
 
 func init() {
-	state.Store(&hijackState{pod2NS: map[string]string{}, allDomains: map[string]bool{}, ns2GwIP: map[string]net.IP{}})
+	allDomains.Store(&meta.AllDomainList{})
+	sourceIP2Search.Store(&meta.SourceIP2Search{})
 }
 
 // GetHijackIP returns dns ip by domain and clientIP
 func GetHijackIP(domain, clientIP string) net.IP {
-	m := state.Load().(*hijackState)
-	ns, ok := m.pod2NS[clientIP]
-	if !ok {
-		return nil
+	mm := allDomains.Load().(*meta.AllDomainList)
+	domains := *mm
+	if domains[domain] {
+		return egressIP
 	}
-	ip := m.ns2GwIP[ns]
-	if ip == nil {
-		return nil
-	}
-	if m.allDomains[domain] {
-		return ip
-	}
-	if m.allDomains[domain+m.clusterDomain] {
-		return ip
-	}
-	if m.allDomains[domain+ns+"."+m.clusterDomain] {
-		return ip
+
+	m := sourceIP2Search.Load().(*meta.SourceIP2Search)
+	searches := (*m)[clientIP]
+	for _, s := range searches {
+		if domains[domain+s] {
+			return egressIP
+		}
 	}
 	return nil
 }
 
-// SetHijackIp set hjiack config
-func SetHijackIp(pod2NS, ns2GwIP map[string]string, serviceList []string, clusterDomain string) {
-	clusterDomain = strings.TrimPrefix(clusterDomain, ".")
-	if !strings.HasSuffix(clusterDomain, ".") {
-		clusterDomain = clusterDomain + "."
-	}
-
-	allDomains := map[string]bool{}
-	for _, v := range serviceList {
-		if !strings.HasSuffix(v, ".") {
-			v = v + "."
+func WatchConfig() {
+	sourceSearchKey := meta.SourceIP2SearchKeyPrefix + innerip.Get()
+	go func() {
+		for val := range watchclient.Watch(sourceSearchKey, &meta.SourceIP2Search{}) {
+			sourceIP2Search.Store(val)
 		}
-		allDomains[v+clusterDomain] = true
-	}
-	newNS2GwIP := map[string]net.IP{}
-	for k, v := range ns2GwIP {
-		newNS2GwIP[k] = net.ParseIP(v)
-	}
-	state.Store(&hijackState{pod2NS: pod2NS, allDomains: allDomains, ns2GwIP: newNS2GwIP, clusterDomain: clusterDomain})
+	}()
+	go func() {
+		for val := range watchclient.Watch(meta.AllDomainListKey, &meta.AllDomainList{}) {
+			allDomains.Store(val)
+		}
+	}()
 }

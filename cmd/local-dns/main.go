@@ -3,6 +3,7 @@ package main
 import (
 	// blank imports to make sure the plugin code is pulled in from vendor when building node-cache image
 
+	"log"
 	"os"
 
 	_ "github.com/coredns/coredns/plugin/bind"
@@ -24,8 +25,10 @@ import (
 	_ "github.com/coredns/coredns/plugin/template"
 	_ "github.com/coredns/coredns/plugin/trace"
 	_ "github.com/coredns/coredns/plugin/whoami"
+	"github.com/ottstack/kindmesh/internal/configapi/watchclient"
 	_ "github.com/ottstack/kindmesh/internal/dns/hijack"
-	"github.com/ottstack/kindmesh/internal/dns/server"
+	"github.com/ottstack/kindmesh/internal/dns/state"
+	"github.com/ottstack/kindmesh/internal/pkg/netdevice"
 	"github.com/ottstack/kindmesh/internal/spec"
 
 	"github.com/coredns/coredns/core/dnsserver"
@@ -33,12 +36,16 @@ import (
 )
 
 func main() {
+	netdevice.EnsureDevice("bridge0")
+	netdevice.AddAddr(spec.DNS_BIND_IP)
+
 	os.Setenv("DNS_BIND_IP", spec.DNS_BIND_IP)
 
+	watchclient.InitWatcher()
+	state.WatchConfig()
+
+	log.Println("Serving dns on", spec.DNS_BIND_IP+":53")
+
 	dnsserver.Directives = append([]string{"hijack"}, dnsserver.Directives...)
-	go func() {
-		coremain.Run()
-		panic("coredns exit")
-	}()
-	server.Serve(spec.DNS_BIND_IP + ":80")
+	coremain.Run()
 }
